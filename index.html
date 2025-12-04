@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Hub Zone</title>
+<link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+
+<h1></h1>
+<button id="startButton" onclick="showMenu()">START GAME</button>
+
+
+<div id="menu">
+    <button onclick="startGame('snake')">
+        <img src="ok.jpg" alt="Snake Game">
+    </button>
+
+    <button onclick="startGame('flappy')">
+        <img src="gs.jpg" alt="Happie Bird">
+    </button>
+
+    <button onclick="startGame('pong')">
+        <img src="ping.jpg" alt="Ping Pong">
+    </button>
+</div>
+
+<div id="gameContainer"></div>
+
+<button id="backButton" onclick="backToMenu()">Back to Menu</button>
+
+<script>
+// ================= GLOBAL =================
+function showMenu() {
+    document.getElementById("startButton").style.display = "none";
+    document.getElementById("menu").style.display = "flex"; 
+}
+
+let currentGame = null;
+
+function startGame(type) {
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("backButton").style.display = "inline-block";
+
+    if(currentGame && currentGame.timer)
+        clearInterval(currentGame.timer);
+
+    const container = document.getElementById("gameContainer");
+    container.innerHTML = "";
+    let canvas = document.createElement("canvas");
+
+    if(type === "snake") {
+        canvas.width = 900; canvas.height = 600;
+        container.appendChild(canvas);
+        currentGame = new SnakeGame(canvas);
+    }
+    else if(type === "flappy") {
+        canvas.width = 600; canvas.height = 800;
+        container.appendChild(canvas);
+        currentGame = new FlappyBird(canvas);
+    }
+    else if(type === "pong") {
+        canvas.width = 1000; canvas.height = 600;
+        container.appendChild(canvas);
+        currentGame = new PongGame(canvas);
+    }
+}
+
+function backToMenu() {
+    if(currentGame && currentGame.timer)
+        clearInterval(currentGame.timer);
+
+    document.getElementById("menu").style.display = "flex";
+    document.getElementById("gameContainer").innerHTML = "";
+    document.getElementById("backButton").style.display = "none";
+}
+
+// ================= SNAKE GAME =================
+class SnakeGame {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.WIDTH = canvas.width;
+    this.HEIGHT = canvas.height;
+    this.SIZE = 25;
+    this.DELAY = 100;
+    this.bgImage = new Image();
+    this.bgImage.src = "ok.jpg";  // Background image
+
+    // Load apple image to replace the red circle
+    this.appleImage = new Image();
+    this.appleImage.src = "aple.png";  // Path to your apple image (make sure it's square to fit the SIZE)
+
+    this.start();
+  }
+
+  start() {
+    this.reset();
+    this.bindKeys();
+    this.timer = setInterval(() => this.update(), this.DELAY);
+    this.draw();
+  }
+
+  reset() {
+    this.direction = "RIGHT";
+    this.nextDir = "RIGHT";
+
+    this.head = {
+      x: Math.floor(this.WIDTH / 2 / this.SIZE) * this.SIZE,
+      y: Math.floor(this.HEIGHT / 2 / this.SIZE) * this.SIZE,
+    };
+
+    this.tail = [
+      { x: this.head.x - this.SIZE, y: this.head.y },
+      { x: this.head.x - 2 * this.SIZE, y: this.head.y },
+      { x: this.head.x - 3 * this.SIZE, y: this.head.y },
+    ];
+
+    this.spawnApple();
+    this.points = 0;
+    this.level = 1;
+    this.status = "RUNNING";
+    this.appleCount = 0;
+    this.DELAY = 100 - (this.level - 1) * 10; // Speed up as level increases
+    this.snakeColor = "#0055ff";  // Default snake color
+    this.randomColorMode = false;  // Flag to indicate if snake is in random color mode
+  }
+
+  bindKeys() {
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft" && this.direction !== "RIGHT") this.nextDir = "LEFT";
+      if (e.key === "ArrowRight" && this.direction !== "LEFT") this.nextDir = "RIGHT";
+      if (e.key === "ArrowUp" && this.direction !== "DOWN") this.nextDir = "UP";
+      if (e.key === "ArrowDown" && this.direction !== "UP") this.nextDir = "DOWN";
+      if (e.key === "Enter" && this.status === "GAME_OVER") this.reset();
+    });
+  }
+
+  spawnApple() {
+    do {
+      this.apple = {
+        x: Math.floor(Math.random() * (this.WIDTH / this.SIZE)) * this.SIZE,
+        y: Math.floor(Math.random() * (this.HEIGHT / this.SIZE)) * this.SIZE,
+      };
+    } while (
+      this.tail.some((segment) => segment.x === this.apple.x && segment.y === this.apple.y) ||
+      (this.head.x === this.apple.x && this.head.y === this.apple.y)
+    );
+  }
+
+  update() {
+    if (this.status !== "RUNNING") return;
+
+    this.direction = this.nextDir;
+
+    // Smooth Snake Movement - Adding tail in smaller increments
+    const newHead = { x: this.head.x, y: this.head.y };
+    
+    if (this.direction === "LEFT") newHead.x -= this.SIZE;
+    if (this.direction === "RIGHT") newHead.x += this.SIZE;
+    if (this.direction === "UP") newHead.y -= this.SIZE;
+    if (this.direction === "DOWN") newHead.y += this.SIZE;
+
+    // Insert new head into the snake body
+    this.tail.unshift({ x: this.head.x, y: this.head.y });
+
+    // Check if the snake eats the apple
+    if (this.head.x === this.apple.x && this.head.y === this.apple.y) {
+      this.appleCount++;
+      this.spawnApple();
+      this.points++;
+
+      // Level up after eating 3 apples
+      if (this.appleCount === 3) {
+        this.levelUp();
+      }
+    } else {
+      // Remove the last segment of the tail unless it ate an apple
+      this.tail.pop();
+    }
+
+    // Update head position
+    this.head = newHead;
+
+    // Check for collision with walls or self
+    if (this.head.x < 0 || this.head.y < 0 || this.head.x >= this.WIDTH || this.head.y >= this.HEIGHT) {
+      this.status = "GAME_OVER";
+    }
+
+    for (let segment of this.tail) {
+      if (segment.x === this.head.x && segment.y === this.head.y) {
+        this.status = "GAME_OVER";
+      }
+    }
+
+    this.draw();
+  }
+
+  levelUp() {
+    this.level++;
+    this.appleCount = 0;
+    this.DELAY = 100 - (this.level - 1) * 10;  // Decrease delay to increase game speed
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.update(), this.DELAY);  // Reset timer with new speed
+
+    // Change snake color to a random color for 2 seconds
+    this.randomColorMode = true;
+    this.snakeColor = this.getRandomColor();
+
+    // Set a timeout to revert the snake color back to default after 2 seconds
+    setTimeout(() => {
+      this.randomColorMode = false;
+      this.snakeColor = "#0055ff";  // Revert to the default snake color
+    }, 2000);
+  }
+
+  getRandomColor() {
+    const letters = "0123456789ABCDEF";
+    let color = "#";
+    for (let i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+  }
+
+  draw() {
+    const c = this.ctx;
+
+    // Draw background
+    if (this.bgImage.complete) {
+      c.drawImage(this.bgImage, 0, 0, this.WIDTH, this.HEIGHT);
+    } else {
+      c.fillStyle = "#70d36b";
+      c.fillRect(0, 0, this.WIDTH, this.HEIGHT);
+    }
+
+    // Draw apple image instead of the red circle
+    if (this.appleImage.complete) {
+      c.drawImage(this.appleImage, this.apple.x, this.apple.y, 50, 50); // Apple image with size 50px
+    } else {
+      // Fallback to red circle if the image is not loaded
+      c.fillStyle = "red";
+      c.beginPath();
+      c.arc(this.apple.x + this.SIZE / 2, this.apple.y + this.SIZE / 2, 10, 0, Math.PI * 2);
+      c.fill();
+    }
+
+    // Draw snake head
+    c.fillStyle = this.randomColorMode ? this.snakeColor : "#0055ff";
+    c.fillRect(this.head.x, this.head.y, this.SIZE, this.SIZE);
+
+    // Snake eyes
+    c.fillStyle = "white";
+    c.fillRect(this.head.x + 4, this.head.y + 4, 6, 6);
+    c.fillRect(this.head.x + 15, this.head.y + 4, 6, 6);
+
+    c.fillStyle = "black";
+    c.fillRect(this.head.x + 7, this.head.y + 18, 10, 4);
+
+    // Draw snake tail
+    for (let s of this.tail) {
+      c.fillStyle = this.randomColorMode ? this.snakeColor : "#00cc44";
+      c.fillRect(s.x, s.y, this.SIZE, this.SIZE);
+      c.fillStyle = "#009933";
+      c.fillRect(s.x, s.y + 8, this.SIZE, 4);
+    }
+
+    // Draw score and level
+    c.fillStyle = "black";
+    c.font = "24px Arial";
+    c.fillText(`Score: ${this.points}`, 10, 30);
+    c.fillText(`Level: ${this.level}`, this.WIDTH - 100, 30);
+
+    // Show game over message
+    if (this.status === "GAME_OVER") {
+      c.font = "48px Arial";
+      c.fillText("GAME OVER", this.WIDTH / 2 - 160, this.HEIGHT / 2);
+      c.font = "24px Arial";
+      c.fillText("Press Enter to Restart", this.WIDTH / 2 - 130, this.HEIGHT / 2 + 50);
+    }
+  }
+}
+
+
+
+// ================= HAPPY=================
+class FlappyBird {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+        this.WIDTH = canvas.width;
+        this.HEIGHT = canvas.height;
+
+        // Physics
+        this.gravity = 0.35;
+        this.lift = -6;
+        this.bird = { x: 150, y: this.HEIGHT / 2, radius: 35, velocity: 0 }; // radius updated for bigger bird
+
+        // Bird image
+        this.birdImage = new Image();
+        this.birdImage.src = "happi.png"; // path to bird image
+        this.birdImageLoaded = false;
+        this.birdImage.onload = () => { this.birdImageLoaded = true; };
+
+        // Background image
+        this.bgImage = new Image();
+        this.bgImage.src = "gb.jpg"; // path to background image
+        this.bgImageLoaded = false;
+        this.bgImage.onload = () => { this.bgImageLoaded = true; };
+
+        // Pipes
+        this.pipes = [];
+        this.pipeWidth = 80;
+        this.pipeGap = 250;
+        this.frameCount = 0;
+        this.score = 0;
+        this.status = "RUNNING";
+        
+        // Highscore
+        this.highscore = 0;
+
+        this.bindKeys();
+        this.timer = setInterval(() => this.update(), 20);
+    }
+
+    bindKeys() {
+        window.addEventListener("keydown", e => {
+            if ((e.key === " " || e.key === "ArrowUp") && this.status === "RUNNING")
+                this.bird.velocity = this.lift;
+            if (e.key === "Enter" && this.status === "GAME_OVER") this.reset();
+        });
+        window.addEventListener("click", () => {
+            if (this.status === "RUNNING") this.bird.velocity = this.lift;
+            if (this.status === "GAME_OVER") this.reset();
+        });
+    }
+
+    reset() {
+        this.bird = { x: 150, y: this.HEIGHT / 2, radius: 35, velocity: 0 };
+        this.pipes = [];
+        this.frameCount = 0;
+        this.score = 0;
+        this.status = "RUNNING";
+    }
+
+    update() {
+        if (this.status !== "RUNNING") return;
+
+        // Bird physics
+        this.bird.velocity += this.gravity;
+        this.bird.y += this.bird.velocity;
+
+        // Add new pipes
+        this.frameCount++;
+        if (this.frameCount % 100 === 0) {
+            let topHeight = Math.random() * (this.HEIGHT - this.pipeGap - 60) + 30;
+            this.pipes.push({ x: this.WIDTH, top: topHeight });
+        }
+
+        // Move pipes
+        for (let pipe of this.pipes) pipe.x -= 2.5;
+
+        // Remove off-screen pipes & update score
+        if (this.pipes.length && this.pipes[0].x < -this.pipeWidth) {
+            this.pipes.shift();
+            this.score++;
+        }
+
+        // Collision detection
+        for (let pipe of this.pipes) {
+            if (this.bird.x + this.bird.radius > pipe.x && this.bird.x - this.bird.radius < pipe.x + this.pipeWidth) {
+                if (this.bird.y - this.bird.radius < pipe.top || this.bird.y + this.bird.radius > pipe.top + this.pipeGap) {
+                    this.status = "GAME_OVER";
+                    this.updateHighscore(); // Update highscore if needed
+                }
+            }
+        }
+
+        // Floor & ceiling
+        if (this.bird.y + this.bird.radius > this.HEIGHT || this.bird.y - this.bird.radius < 0) {
+            this.status = "GAME_OVER";
+            this.updateHighscore(); // Update highscore if needed
+        }
+
+        this.draw();
+    }
+
+    updateHighscore() {
+        // Update highscore if current score is higher
+        if (this.score > this.highscore) {
+            this.highscore = this.score;
+        }
+    }
+
+    draw() {
+        const c = this.ctx;
+
+        // Draw background image if loaded
+        if (this.bgImageLoaded) {
+            c.drawImage(this.bgImage, 0, 0, this.WIDTH, this.HEIGHT);
+        } else {
+            c.fillStyle = "#70c5ce"; // Sky blue fallback if image is not loaded
+            c.fillRect(0, 0, this.WIDTH, this.HEIGHT);
+        }
+
+        // Bird (image)
+        if (this.birdImageLoaded) {
+            let scale = 1.5; // scale factor for bigger bird
+            c.drawImage(
+                this.birdImage,
+                this.bird.x - this.bird.radius * scale,
+                this.bird.y - this.bird.radius * scale,
+                this.bird.radius * 2 * scale,
+                this.bird.radius * 2 * scale
+            );
+        } else {
+            // Fallback yellow circle if image is not loaded
+            c.fillStyle = "yellow";
+            c.beginPath();
+            c.arc(this.bird.x, this.bird.y, this.bird.radius, 0, Math.PI * 2);
+            c.fill();
+        }
+
+        // Pipe styles (Gradient pipes)
+        for (let pipe of this.pipes) {
+            let gradientTop = c.createLinearGradient(pipe.x, 0, pipe.x + this.pipeWidth, 0);
+            gradientTop.addColorStop(0, "#00b300");  // Green at the top
+            gradientTop.addColorStop(1, "#009900");  // Dark green at the bottom
+
+            c.fillStyle = gradientTop;
+            c.fillRect(pipe.x, 0, this.pipeWidth, pipe.top); // Top pipe
+
+            let gradientBottom = c.createLinearGradient(pipe.x, this.HEIGHT, pipe.x + this.pipeWidth, this.HEIGHT);
+            gradientBottom.addColorStop(0, "#00b300");
+            gradientBottom.addColorStop(1, "#009900");
+
+            c.fillStyle = gradientBottom;
+            c.fillRect(pipe.x, pipe.top + this.pipeGap, this.pipeWidth, this.HEIGHT - pipe.top - this.pipeGap); // Bottom pipe
+        }
+
+        // Score display
+        c.fillStyle = "black";
+        c.font = "24px Arial";
+        c.fillText(`Score: ${this.score}`, 10, 30);
+
+        // Highscore display
+        c.fillStyle = "black";
+        c.font = "24px Arial";
+        c.fillText(`Highscore: ${this.highscore}`, this.WIDTH - 150, 30);
+
+        // Game Over screen
+        if (this.status === "GAME_OVER") {
+            c.font = "48px Arial";
+            c.fillText("GAME OVER", this.WIDTH / 2 - 150, this.HEIGHT / 2);
+            c.font = "24px Arial";
+            c.fillText("Press Enter or Click to Restart", this.WIDTH / 2 - 150, this.HEIGHT / 2 + 50);
+
+            // Highscore message
+            c.font = "24px Arial";
+            c.fillText(`Congrats, your highscore is: ${this.highscore}!`, this.WIDTH / 2 - 160, this.HEIGHT / 2 + 100);
+        }
+    }
+}
+
+
+
+// ================= PONG GAME =================
+class PongGame {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+        this.width = canvas.width;
+        this.height = canvas.height;
+
+        // Ball properties
+        this.ball = { x: this.width / 2, y: this.height / 2, vx: 5, vy: 5, r: 15 };
+
+        // Paddle properties
+        this.player = { x: 20, y: this.height / 2 - 50, w: 15, h: 100 };
+        this.ai = { x: this.width - 35, y: this.height / 2 - 50, w: 15, h: 100 };
+
+        // Scores
+        this.scorePlayer = 0;
+        this.scoreAI = 0;
+
+        // Game state
+        this.gameOver = false;
+
+        // Key state
+        this.keys = { W: false, S: false };
+
+        // Load background image
+        this.bgImage = new Image();
+        this.bgImage.src = "pings.jpg"; // Default background image
+        this.bgImage.onload = () => {
+            // Start the game loop only after the background image is loaded
+            requestAnimationFrame(this.update.bind(this));
+        };
+
+        // Key event listeners for ASDW controls
+        window.addEventListener("keydown", (e) => this.onKeyDown(e));
+        window.addEventListener("keyup", (e) => this.onKeyUp(e));
+    }
+
+    // Keydown event handler
+    onKeyDown(event) {
+        if (event.key === "w" || event.key === "W") {
+            this.keys.W = true;
+        }
+        if (event.key === "s" || event.key === "S") {
+            this.keys.S = true;
+        }
+    }
+
+    // Keyup event handler
+    onKeyUp(event) {
+        if (event.key === "w" || event.key === "W") {
+            this.keys.W = false;
+        }
+        if (event.key === "s" || event.key === "S") {
+            this.keys.S = false;
+        }
+    }
+
+    // Game update loop
+    update() {
+        if (this.gameOver) return;
+
+        this.moveBall();
+        this.checkCollisions();
+        this.updateScores();
+        this.movePlayer();
+        this.draw();
+
+        requestAnimationFrame(this.update.bind(this)); // Continue the game loop
+    }
+
+    // Move the ball
+    moveBall() {
+        this.ball.x += this.ball.vx;
+        this.ball.y += this.ball.vy;
+
+        // Ball bouncing off top and bottom
+        if (this.ball.y - this.ball.r < 0 || this.ball.y + this.ball.r > this.height) {
+            this.ball.vy *= -1;
+        }
+    }
+
+    // Check collisions with paddles and update ball speed accordingly
+    checkCollisions() {
+        // Player paddle collision
+        if (this.ball.x - this.ball.r < this.player.x + this.player.w &&
+            this.ball.y > this.player.y && this.ball.y < this.player.y + this.player.h) {
+            this.ball.vx *= -1;
+            this.ball.vy = (this.ball.y - (this.player.y + this.player.h / 2)) * 0.2;
+        }
+
+        // AI paddle collision
+        if (this.ball.x + this.ball.r > this.ai.x &&
+            this.ball.y > this.ai.y && this.ball.y < this.ai.y + this.ai.h) {
+            this.ball.vx *= -1;
+            this.ball.vy = (this.ball.y - (this.ai.y + this.ai.h / 2)) * 0.2;
+        }
+
+        // AI paddle smooth movement
+        const aiCenter = this.ai.y + this.ai.h / 2;
+        this.ai.y += (this.ball.y - aiCenter) * 0.08;  // AI smooth follow
+        this.ai.y = Math.max(0, Math.min(this.height - this.ai.h, this.ai.y)); // Clamp AI paddle
+    }
+
+    // Update scores when the ball goes out of bounds
+    updateScores() {
+        if (this.ball.x < 0) {
+            this.scoreAI++;
+            this.resetBall(1);  // Ball resets towards the player
+        } else if (this.ball.x > this.width) {
+            this.scorePlayer++;
+            this.resetBall(-1);  // Ball resets towards the AI
+        }
+
+        // Game over condition (change to score limit)
+        if (this.scorePlayer >= 5) {
+            this.gameOver = true;
+            this.winner = 'Player 1';  // Player wins
+        }
+        else if (this.scoreAI >= 5) {
+            this.gameOver = true;
+            this.winner = 'AI';  // AI wins
+        }
+    }
+
+    // Move the player paddle with ASDW controls
+    movePlayer() {
+        const speed = 5;  // Paddle speed
+        if (this.keys.W) {
+            this.player.y -= speed;
+        }
+        if (this.keys.S) {
+            this.player.y += speed;
+        }
+
+        // Clamp player paddle inside the canvas
+        this.player.y = Math.max(0, Math.min(this.height - this.player.h, this.player.y));
+    }
+
+    // Reset ball to the center
+    resetBall(direction) {
+        this.ball.x = this.width / 2;
+        this.ball.y = this.height / 2;
+        this.ball.vx = 5 * direction;
+        this.ball.vy = 5 * (Math.random() > 0.5 ? 1 : -1);
+    }
+
+    // Draw game elements
+    draw() {
+        const c = this.ctx;
+
+        // Draw background
+        c.drawImage(this.bgImage, 0, 0, this.width, this.height);
+
+        // Draw paddles
+        c.fillStyle = "#33FF57"; // Green paddle color
+        c.fillRect(this.player.x, this.player.y, this.player.w, this.player.h);
+        c.fillRect(this.ai.x, this.ai.y, this.ai.w, this.ai.h);
+
+        // Draw ball
+        c.beginPath();
+        c.arc(this.ball.x, this.ball.y, this.ball.r, 0, Math.PI * 2);
+        c.fillStyle = "#FF5733";  // Red ball color
+        c.fill();
+
+        // Draw score
+        c.font = "24px Arial";
+        c.fillStyle = "#FFFFFF";  // White score text
+        c.fillText(`${this.scorePlayer} : ${this.scoreAI}`, this.width / 2 - 50, 40);
+
+        // Draw game over message
+        if (this.gameOver) {
+            c.font = "48px Arial";
+            if (this.winner === 'Player 1') {
+                c.fillText("Congratulations Sayo!", this.width / 2 - 200, this.height / 2);
+            } else {
+                c.fillText("AI Wins!", this.width / 2 - 100, this.height / 2);
+            }
+            c.font = "24px Arial";
+            c.fillText("Click to Restart", this.width / 2 - 70, this.height / 2 + 50);
+
+            // Restart game on click
+            this.canvas.addEventListener("click", () => {
+                if (this.gameOver) {
+                    this.resetGame();
+                }
+            });
+        }
+    }
+
+    // Reset the game
+    resetGame() {
+        this.gameOver = false;
+        this.scorePlayer = 0;
+        this.scoreAI = 0;
+        this.resetBall(1);  // Reset ball to start towards the player
+        requestAnimationFrame(this.update.bind(this));  // Restart game loop
+    }
+}
+
+
+
+
+</script>
+<footer>
+    &copy; December 4, 2025 - Game Hub Zone. All rights reserved.
+</footer>
+</body>
+</html>
